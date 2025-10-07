@@ -194,8 +194,8 @@ jobs:
         # Create production directory
         mkdir -p n8n-bundle
         
-        # Copy the ENTIRE built project INCLUDING node_modules
-        cp -r . n8n-bundle/
+        # Copy the ENTIRE built project INCLUDING node_modules without recursing into the bundle itself
+        tar -cf - --exclude='./n8n-bundle' . | (cd n8n-bundle && tar -xf -)
         
         # Clean up development files we don't need in production
         rm -rf n8n-bundle/.git
