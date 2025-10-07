@@ -55,7 +55,6 @@ jobs:
       run: |
         cd n8n-source
         
-        # Read Node.js version requirement
         NODE_VERSION="22"
         if [ -f "package.json" ]; then
           NODE_VERSION=$(node -e "
@@ -74,7 +73,6 @@ jobs:
           ")
         fi
         
-        # Read pnpm version requirement
         PNPM_VERSION="10.16.1"
         if [ -f "package.json" ]; then
           PNPM_VERSION=$(node -e "
@@ -94,9 +92,6 @@ jobs:
             }
           ")
         fi
-        
-        echo "Detected Node.js version requirement: $NODE_VERSION"
-        echo "Detected pnpm version requirement: $PNMP_VERSION"
         
         echo "NODE_VERSION=$NODE_VERSION" >> $GITHUB_ENV
         echo "PNPM_VERSION=$PNPM_VERSION" >> $GITHUB_ENV
@@ -191,54 +186,43 @@ jobs:
         done
       timeout-minutes: 60
 
-    - name: Prepare production-ready package structure
+    - name: Create complete production bundle
       run: |
         cd n8n-source
-        echo "Preparing production-ready package structure..."
+        echo "Creating complete production bundle with all dependencies..."
         
         # Create production directory
-        mkdir -p prod-n8n
+        mkdir -p n8n-bundle
         
-        # Copy built CLI package (main entry point)
-        cp -r packages/cli prod-n8n/
+        # Copy the ENTIRE built project INCLUDING node_modules
+        cp -r . n8n-bundle/
         
-        # Copy core packages that CLI depends on
-        cp -r packages/core prod-n8n/
-        cp -r packages/workflow prod-n8n/
-        cp -r packages/nodes-base prod-n8n/
+        # Clean up development files we don't need in production
+        rm -rf n8n-bundle/.git
+        rm -rf n8n-bundle/cypress
+        rm -rf n8n-bundle/scripts
+        rm -rf n8n-bundle/patches
         
-        # Copy built editor UI
-        mkdir -p prod-n8n/public
-        if [ -d "packages/frontend/editor-ui/dist" ]; then
-          cp -r packages/frontend/editor-ui/dist/* prod-n8n/public/
-        fi
-        
-        # Create simplified package.json for production
-        cat > prod-n8n/package.json << 'EOF'
+        # Create a simple package.json for runtime
+        cat > n8n-bundle/package.json << 'EOF'
         {
-          "name": "n8n",
-          "version": "1.114.3",
-          "main": "cli/dist/index.js",
+          "name": "n8n-enterprise",
+          "version": "${{ env.N8N_VERSION }}",
+          "description": "n8n Enterprise Docker Build",
+          "main": "./packages/cli/dist/index.js",
           "bin": {
-            "n8n": "./cli/bin/n8n"
+            "n8n": "./packages/cli/bin/n8n"
           },
           "scripts": {
-            "start": "node cli/dist/index.js"
-          },
-          "dependencies": {
-            "typescript": "^5.6.2"
-          },
-          "engines": {
-            "node": ">=18.10",
-            "pnpm": ">=8.6"
+            "start": "node packages/cli/dist/index.js"
           }
         }
         EOF
         
-        echo "Production structure created successfully"
-        ls -la prod-n8n/
+        echo "Complete bundle created with full node_modules"
+        ls -la n8n-bundle/
 
-    - name: Create fixed Dockerfile
+    - name: Create working Dockerfile
       run: |
         cd n8n-source
         cat > Dockerfile << 'EOF'
@@ -260,13 +244,13 @@ jobs:
         # Create app directory
         WORKDIR /usr/src/app
         
-        # Copy production-ready files
-        COPY prod-n8n/ ./
+        # Copy the COMPLETE built n8n bundle with all dependencies
+        COPY n8n-bundle/ ./
         
-        # Fix permissions using existing node user (ID 1000 already exists)
+        # Fix permissions and create symlink
         RUN chown -R node:node /usr/src/app && \
-          chmod +x cli/bin/n8n && \
-          ln -s /usr/src/app/cli/bin/n8n /usr/local/bin/n8n
+          chmod +x packages/cli/bin/n8n && \
+          ln -s /usr/src/app/packages/cli/bin/n8n /usr/local/bin/n8n
         
         # Create n8n data directory
         RUN mkdir -p /home/node/.n8n && \
@@ -275,7 +259,7 @@ jobs:
         # Set environment
         ENV N8N_USER_FOLDER=/home/node/.n8n
         ENV NODE_ENV=production
-        ENV NODE_OPTIONS="--max-old-space-size=1024"
+        ENV NODE_OPTIONS="--max-old-space-size=2048"
         
         EXPOSE 5678
         
@@ -286,7 +270,7 @@ jobs:
         CMD ["n8n"]
         EOF
         
-        echo "Fixed Dockerfile created successfully"
+        echo "Working Dockerfile created with complete bundle"
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
@@ -298,10 +282,10 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Build Docker image with fixed Dockerfile
+    - name: Build Docker image with complete bundle
       run: |
         cd n8n-source
-        echo "Building Docker image with fixed user handling..."
+        echo "Building Docker image with complete n8n bundle..."
         
         docker build \
           --progress=plain \
@@ -325,10 +309,8 @@ jobs:
       run: |
         cd n8n-source
         
-        # Get the image
         IMAGE_NAME_LOCAL="n8n:latest"
         
-        # بررسی وجود ایمیج
         if [ "$(docker images -q $IMAGE_NAME_LOCAL)" = "" ]; then
           echo "::error::Could not find built n8n Docker image"
           echo "Available images:"
@@ -348,7 +330,6 @@ jobs:
           "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:n8n-${{ env.N8N_COMMIT_HASH }}"
         )
         
-        # Add version tag if available
         if [ "${{ env.N8N_VERSION }}" != "unknown" ]; then
           TAGS+=("${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:v${{ env.N8N_VERSION }}")
         fi
