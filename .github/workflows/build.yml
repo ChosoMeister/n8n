@@ -99,7 +99,7 @@ jobs:
         echo "Detected pnpm version requirement: $PNPM_VERSION"
         
         echo "NODE_VERSION=$NODE_VERSION" >> $GITHUB_ENV
-        echo "PNPM_VERSION=$PNMP_VERSION" >> $GITHUB_ENV
+        echo "PNPM_VERSION=$PNPM_VERSION" >> $GITHUB_ENV
 
     - name: Copy bypass script to n8n repository
       run: |
@@ -131,7 +131,7 @@ jobs:
         path: ${{ env.STORE_PATH }}
         key: ${{ runner.os }}-pnpm-store-${{ hashFiles('n8n-source/pnpm-lock.yaml') }}
         restore-keys: |
-          ${{ runner.os }}-pnpm-store-
+          ${{ runner.os }}-pnmp-store-
 
     - name: Free up disk space
       run: |
