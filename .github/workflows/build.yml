@@ -11,6 +11,7 @@ env:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
+    timeout-minutes: 180
     permissions:
       contents: read
       packages: write
@@ -24,10 +25,10 @@ jobs:
         git clone --depth=1 https://github.com/n8n-io/n8n.git n8n-source
         cd n8n-source
         
-        # Fetch tags for release detection
+        # Fetch only the latest release tag
         git fetch --depth=1 origin +refs/tags/*:refs/tags/*
 
-        # Get latest stable release with proper error handling
+        # Get latest stable release
         releases_json=$(curl -s --retry 3 --retry-delay 5 https://api.github.com/repos/n8n-io/n8n/releases)
         if [ $? -ne 0 ]; then
           echo "Failed to fetch releases, using default branch"
@@ -62,13 +63,13 @@ jobs:
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
-        node-version: '22'
-        check-latest: true
+        node-version: '20'
+        cache: 'npm'
 
     - name: Install pnpm
       uses: pnpm/action-setup@v4
       with:
-        version: latest
+        version: '9.12.0'
 
     - name: Get pnpm store directory
       shell: bash
@@ -83,10 +84,20 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-pnpm-store-
 
+    - name: Free up disk space
+      run: |
+        sudo rm -rf /usr/local/lib/android
+        sudo rm -rf /usr/share/dotnet
+        sudo rm -rf /opt/ghc
+        sudo rm -rf /usr/local/share/boost
+        sudo apt-get clean
+        docker system prune -af
+
     - name: Install dependencies
       run: |
         cd n8n-source
         pnpm install --frozen-lockfile --prefer-offline
+      timeout-minutes: 30
 
     - name: Run bypass script
       run: |
@@ -103,10 +114,21 @@ jobs:
           echo "::warning::bypass.sh not found in n8n repository, skipping..."
         fi
 
-    - name: Build n8n
+    - name: Build n8n with memory optimization
       run: |
         cd n8n-source
-        pnpm run build
+        export NODE_OPTIONS="--max_old_space_size=7168"
+        export NODE_ENV=production
+        
+        echo "Starting n8n build process..."
+        echo "Available memory:"
+        free -h
+        
+        # Build with optimized settings
+        pnpm run build --max_old_space_size=7168
+        
+        echo "Build completed successfully"
+      timeout-minutes: 60
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
@@ -118,23 +140,13 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Extract metadata
-      id: meta
-      uses: docker/metadata-action@v5
-      with:
-        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-        tags: |
-          type=ref,event=branch
-          type=ref,event=pr
-          type=raw,value=${{ env.IMAGE_TAG }}
-          type=raw,value=latest,enable={{is_default_branch}}
-          type=sha,prefix={{branch}}-
-          type=raw,value=v${{ env.N8N_VERSION }},enable=${{ env.N8N_VERSION != 'unknown' }}
-
     - name: Build Docker image
       run: |
         cd n8n-source
+        echo "Building Docker image..."
         pnpm run build:docker
+        echo "Docker image built successfully"
+      timeout-minutes: 30
 
     - name: Tag and push Docker image
       run: |
@@ -176,14 +188,23 @@ jobs:
         # Push all tags with retry logic
         for tag in "${TAGS[@]}"; do
           echo "Pushing: $tag"
-          if ! docker push "$tag"; then
-            echo "::warning::Failed to push $tag on first attempt, retrying..."
-            sleep 5
-            docker push "$tag"
-          fi
+          for i in {1..3}; do
+            if docker push "$tag"; then
+              echo "Successfully pushed $tag"
+              break
+            else
+              echo "::warning::Failed to push $tag on attempt $i/3"
+              if [ $i -eq 3 ]; then
+                echo "::error::Failed to push $tag after 3 attempts"
+                exit 1
+              fi
+              sleep 10
+            fi
+          done
         done
         
         echo "Successfully pushed all Docker image tags to GHCR"
+      timeout-minutes: 30
 
     - name: Generate build summary
       if: always()
@@ -195,18 +216,17 @@ jobs:
         echo "| n8n Commit | \`${{ env.N8N_COMMIT_HASH }}\` |" >> $GITHUB_STEP_SUMMARY
         echo "| Registry | \`${{ env.REGISTRY }}\` |" >> $GITHUB_STEP_SUMMARY
         echo "| Image | \`${{ env.IMAGE_NAME }}\` |" >> $GITHUB_STEP_SUMMARY
-        echo "| Tags | \`enterprise\`, \`latest\`, \`${{ github.sha }}\`, \`n8n-${{ env.N8N_COMMIT_HASH }}\`" >> $GITHUB_STEP_SUMMARY
+        
         if [ "${{ env.N8N_VERSION }}" != "unknown" ]; then
-          echo ", \`v${{ env.N8N_VERSION }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "| Available Tags | \`enterprise\`, \`latest\`, \`v${{ env.N8N_VERSION }}\`, \`${{ github.sha }}\`, \`n8n-${{ env.N8N_COMMIT_HASH }}\` |" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "| Available Tags | \`enterprise\`, \`latest\`, \`${{ github.sha }}\`, \`n8n-${{ env.N8N_COMMIT_HASH }}\` |" >> $GITHUB_STEP_SUMMARY
         fi
-        echo " |" >> $GITHUB_STEP_SUMMARY
 
     - name: Clean up
       if: always()
       run: |
-        # More comprehensive cleanup
         docker system prune -af --volumes
-        # Clean pnpm cache if it gets too large
         if [ -d "${{ env.STORE_PATH }}" ]; then
           du -sh "${{ env.STORE_PATH }}" || true
         fi
