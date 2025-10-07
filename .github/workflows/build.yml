@@ -131,7 +131,7 @@ jobs:
         path: ${{ env.STORE_PATH }}
         key: ${{ runner.os }}-pnpm-store-${{ hashFiles('n8n-source/pnpm-lock.yaml') }}
         restore-keys: |
-          ${{ runner.os }}-pnmp-store-
+          ${{ runner.os }}-pnpm-store-
 
     - name: Free up disk space
       run: |
@@ -191,6 +191,24 @@ jobs:
         done
       timeout-minutes: 60
 
+    - name: Prepare n8n compiled artifacts
+      run: |
+        cd n8n-source
+        echo "Preparing compiled artifacts for Docker build..."
+        
+        # ایجاد compiled directory
+        mkdir -p compiled
+        
+        # کپی کردن تمام built files
+        cp -r dist compiled/ 2>/dev/null || echo "No dist directory found"
+        cp -r packages compiled/ 2>/dev/null || echo "No packages directory to copy"
+        cp package.json compiled/ 2>/dev/null || echo "No root package.json"
+        cp pnpm-lock.yaml compiled/ 2>/dev/null || echo "No pnpm-lock.yaml"
+        
+        # بررسی محتویات
+        echo "Compiled directory contents:"
+        ls -la compiled/
+        
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
 
@@ -201,22 +219,52 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Build Docker image
+    - name: Build Docker image directly
       run: |
         cd n8n-source
-        echo "Building Docker image..."
-        pnpm run build:docker
+        echo "Building Docker image directly..."
+        
+        # بررسی Dockerfile
+        if [ -f "docker/images/n8n/Dockerfile" ]; then
+          echo "Using official n8n Dockerfile"
+          
+          # Build image با context مناسب
+          docker build \
+            --progress=plain \
+            --build-arg N8N_VERSION=${{ env.N8N_VERSION }} \
+            --build-arg NODE_VERSION=${{ env.NODE_VERSION }} \
+            -f docker/images/n8n/Dockerfile \
+            -t n8n:latest \
+            .
+            
+        else
+          echo "::error::Dockerfile not found at expected location"
+          echo "Available files in docker/images/n8n/:"
+          ls -la docker/images/n8n/ || echo "Directory not found"
+          exit 1
+        fi
+        
+        # بررسی ایمیج ساخته شده
+        echo "Built Docker images:"
+        docker images n8n:latest
+        
+        if [ "$(docker images -q n8n:latest)" = "" ]; then
+          echo "::error::Docker image was not built successfully"
+          exit 1
+        fi
+        
         echo "Docker image built successfully"
-      timeout-minutes: 30
+      timeout-minutes: 45
 
     - name: Tag and push Docker image
       run: |
         cd n8n-source
         
         # Get the image with better error handling
-        IMAGE_NAME_LOCAL=$(docker images --format "table {{.Repository}}\t{{.Tag}}\t{{.ID}}" | grep -E "^n8n[[:space:]]" | head -1 | awk '{print $1":"$2}')
+        IMAGE_NAME_LOCAL="n8n:latest"
         
-        if [ -z "$IMAGE_NAME_LOCAL" ]; then
+        # بررسی وجود ایمیج
+        if [ "$(docker images -q $IMAGE_NAME_LOCAL)" = "" ]; then
           echo "::error::Could not find built n8n Docker image"
           echo "Available images:"
           docker images
