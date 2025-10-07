@@ -50,7 +50,6 @@ jobs:
           cd n8n-source
           if [ -f "bypass.sh" ]; then
             chmod +x bypass.sh
-            # auto mode for CI
             ./bypass.sh --auto
             echo "bypass.sh executed (auto mode)"
           else
@@ -69,7 +68,7 @@ jobs:
           dest: ~/setup-pnpm
 
       - name: Compute pnpm store path
-        run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+        run: echo "STORE_PATH=$(pnpm store path --silent)" >> "$GITHUB_ENV"
 
       - name: Restore pnpm store cache
         uses: actions/cache@v3
@@ -87,7 +86,6 @@ jobs:
         working-directory: n8n-source
         run: pnpm run build
 
-      # Buildx setup + login
       - name: Setup Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -98,8 +96,8 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Build AND push in one atomic step (no local load, less brittle)
-      - name: Buildx: build & push to registry (multi-tag)
+      # Build AND push in one atomic step (no local load)
+      - name: Buildx: build and push to registry (multi-tag)
         working-directory: n8n-source
         env:
           REGISTRY: ${{ env.REGISTRY }}
@@ -107,11 +105,9 @@ jobs:
           IMAGE_TAG: ${{ env.IMAGE_TAG }}
         run: |
           set -euo pipefail
-          # create full image names
           FULL_TAG="${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}"
           FULL_LATEST="${REGISTRY}/${IMAGE_NAME}:latest"
 
-          # Use buildx to build and push directly to registry (avoids local daemon issues)
           docker buildx build \
             --platform=linux/amd64 \
             -t "$FULL_TAG" \
@@ -119,18 +115,15 @@ jobs:
             --push \
             -f docker/images/n8n/Dockerfile .
 
-      # Optional: verify that pushed image exists on registry by querying registry API (best-effort)
+      # Optional best-effort verification (does not fail the job)
       - name: Verify GHCR image (best-effort)
         if: always()
         run: |
           set -euo pipefail
-          # This check is best-effort — GHCR APIs require auth; we use docker manifest inspect as a lightweight check.
           FULL_TAG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
           echo "Checking image manifest for $FULL_TAG"
           if docker manifest inspect "$FULL_TAG" > /dev/null 2>&1; then
             echo "Image $FULL_TAG found (manifest present)"
           else
-            echo "Warning: docker manifest inspect failed to find $FULL_TAG — check build logs or GHCR UI"
-            # do not fail here to allow human inspection; remove next line if you want CI to fail instead
-            # exit 1
+            echo "Warning: docker manifest inspect failed to find $FULL_TAG"
           fi
