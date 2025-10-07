@@ -191,13 +191,60 @@ jobs:
         done
       timeout-minutes: 60
 
-    - name: Create simple Dockerfile
+    - name: Prepare production-ready package structure
+      run: |
+        cd n8n-source
+        echo "Preparing production-ready package structure..."
+        
+        # Create production directory
+        mkdir -p prod-n8n
+        
+        # Copy built CLI package (main entry point)
+        cp -r packages/cli prod-n8n/
+        
+        # Copy core packages that CLI depends on
+        cp -r packages/core prod-n8n/
+        cp -r packages/workflow prod-n8n/
+        cp -r packages/nodes-base prod-n8n/
+        
+        # Copy built editor UI
+        mkdir -p prod-n8n/public
+        if [ -d "packages/frontend/editor-ui/dist" ]; then
+          cp -r packages/frontend/editor-ui/dist/* prod-n8n/public/
+        fi
+        
+        # Create simplified package.json for production
+        cat > prod-n8n/package.json << 'EOF'
+        {
+          "name": "n8n",
+          "version": "1.114.3",
+          "main": "cli/dist/index.js",
+          "bin": {
+            "n8n": "./cli/bin/n8n"
+          },
+          "scripts": {
+            "start": "node cli/dist/index.js"
+          },
+          "dependencies": {
+            "typescript": "^5.6.2"
+          },
+          "engines": {
+            "node": ">=18.10",
+            "pnpm": ">=8.6"
+          }
+        }
+        EOF
+        
+        echo "Production structure created successfully"
+        ls -la prod-n8n/
+
+    - name: Create optimized Dockerfile
       run: |
         cd n8n-source
         cat > Dockerfile << 'EOF'
         FROM node:22-alpine
         
-        # Install dependencies needed for n8n
+        # Install system dependencies
         RUN apk add --no-cache \
           tini \
           su-exec \
@@ -207,34 +254,41 @@ jobs:
           cairo-dev \
           pango-dev \
           jpeg-dev \
-          giflib-dev
+          giflib-dev \
+          git
         
-        WORKDIR /home/node
+        # Create app directory
+        WORKDIR /usr/src/app
         
-        # Copy built n8n files
-        COPY . /home/node/
+        # Copy production-ready files
+        COPY prod-n8n/ ./
         
-        # Install production dependencies
-        RUN npm install --omit=dev && npm cache clean --force
-        
-        # Set permissions
+        # Set permissions and create user
         RUN addgroup -g 1000 node && \
           adduser -u 1000 -G node -s /bin/sh -D node && \
-          chown -R node:node /home/node && \
-          chmod +x /home/node/packages/cli/bin/n8n
+          chown -R node:node /usr/src/app && \
+          chmod +x cli/bin/n8n && \
+          ln -s /usr/src/app/cli/bin/n8n /usr/local/bin/n8n
         
-        # Create symlink
-        RUN ln -s /home/node/packages/cli/bin/n8n /usr/local/bin/n8n
+        # Create n8n data directory
+        RUN mkdir -p /home/node/.n8n && \
+          chown -R node:node /home/node
+        
+        # Set environment
+        ENV N8N_USER_FOLDER=/home/node/.n8n
+        ENV NODE_ENV=production
+        ENV NODE_OPTIONS="--max-old-space-size=1024"
         
         EXPOSE 5678
         
         USER node
+        WORKDIR /home/node
         
         ENTRYPOINT ["tini", "--"]
         CMD ["n8n"]
         EOF
         
-        echo "Simple Dockerfile created successfully"
+        echo "Optimized Dockerfile created successfully"
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
@@ -246,10 +300,10 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Build Docker image with simple Dockerfile
+    - name: Build Docker image with optimized approach
       run: |
         cd n8n-source
-        echo "Building Docker image with simple Dockerfile..."
+        echo "Building Docker image with optimized approach..."
         
         docker build \
           --progress=plain \
@@ -257,7 +311,7 @@ jobs:
           -t n8n:latest \
           .
         
-        # بررسی ایمیج ساخته شده
+        # Verify image was built
         echo "Built Docker images:"
         docker images n8n:latest
         
