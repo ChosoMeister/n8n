@@ -96,7 +96,7 @@ jobs:
         fi
         
         echo "Detected Node.js version requirement: $NODE_VERSION"
-        echo "Detected pnpm version requirement: $PNPM_VERSION"
+        echo "Detected pnpm version requirement: $PNMP_VERSION"
         
         echo "NODE_VERSION=$NODE_VERSION" >> $GITHUB_ENV
         echo "PNPM_VERSION=$PNPM_VERSION" >> $GITHUB_ENV
@@ -238,7 +238,7 @@ jobs:
         echo "Production structure created successfully"
         ls -la prod-n8n/
 
-    - name: Create optimized Dockerfile
+    - name: Create fixed Dockerfile
       run: |
         cd n8n-source
         cat > Dockerfile << 'EOF'
@@ -263,10 +263,8 @@ jobs:
         # Copy production-ready files
         COPY prod-n8n/ ./
         
-        # Set permissions and create user
-        RUN addgroup -g 1000 node && \
-          adduser -u 1000 -G node -s /bin/sh -D node && \
-          chown -R node:node /usr/src/app && \
+        # Fix permissions using existing node user (ID 1000 already exists)
+        RUN chown -R node:node /usr/src/app && \
           chmod +x cli/bin/n8n && \
           ln -s /usr/src/app/cli/bin/n8n /usr/local/bin/n8n
         
@@ -288,7 +286,7 @@ jobs:
         CMD ["n8n"]
         EOF
         
-        echo "Optimized Dockerfile created successfully"
+        echo "Fixed Dockerfile created successfully"
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
@@ -300,10 +298,10 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Build Docker image with optimized approach
+    - name: Build Docker image with fixed Dockerfile
       run: |
         cd n8n-source
-        echo "Building Docker image with optimized approach..."
+        echo "Building Docker image with fixed user handling..."
         
         docker build \
           --progress=plain \
