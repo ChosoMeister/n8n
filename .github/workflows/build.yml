@@ -1,8 +1,6 @@
-name: build-and-push
+name: Build and Push n8n Enterprise Docker Image
 
 on:
-  push:
-    branches: [ master, main ]
   workflow_dispatch:
 
 env:
@@ -10,101 +8,144 @@ env:
   IMAGE_NAME: chosomeister/n8n
   IMAGE_TAG: enterprise
 
-permissions:
-  contents: read
-  packages: write
-
 jobs:
   build-and-push:
-    name: Build and Push n8n Image
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
+    - name: Checkout current repository
+      uses: actions/checkout@v4
 
-      - name: Clone upstream n8n latest stable
-        run: |
-          set -euo pipefail
-          git clone https://github.com/n8n-io/n8n.git n8n-source
-          cd n8n-source
-          releases_json=$(curl -s https://api.github.com/repos/n8n-io/n8n/releases)
-          latest_stable_tag=$(echo "$releases_json" | jq -r '.[] | select(.prerelease == false) | .tag_name' | head -n 1)
-          if [ -n "$latest_stable_tag" ] && git rev-parse --verify "$latest_stable_tag" >/dev/null 2>&1; then
-            git checkout "$latest_stable_tag"
-          fi
-          echo "N8N_COMMIT_HASH=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
-          echo "Checked out tag: ${latest_stable_tag:-"(left at default branch)"}"
+    - name: Clone n8n repository
+      run: |
+        git clone https://github.com/n8n-io/n8n.git n8n-source
+        cd n8n-source
+        git fetch --tags
 
-      - name: Apply license bypass
-        run: |
-          set -euo pipefail
-          if [ -f "bypass.sh" ]; then
-            cp bypass.sh n8n-source/
-            echo "bypass.sh copied to n8n-source"
-          else
-            echo "bypass.sh not found in root; skipping copy"
-          fi
-          cd n8n-source
-          if [ -f "bypass.sh" ]; then
-            chmod +x bypass.sh
-            ./bypass.sh --auto
-            echo "bypass.sh executed (auto mode)"
-          else
-            echo "No bypass.sh inside n8n-source; skipping execution"
-          fi
+        releases_json=$(curl -s https://api.github.com/repos/n8n-io/n8n/releases)
+        latest_stable_tag=$(echo "$releases_json" | jq -r '.[] | select(.prerelease == false) | .tag_name' | head -n 1)
+        if [ -n "$latest_stable_tag" ]; then
+          git checkout "$latest_stable_tag"
+        fi
 
-      - name: Use Node.js 22
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
+        n8n_commit_hash=$(git rev-parse HEAD)
+        echo "Cloned n8n repository successfully"
+        echo "Current commit: $n8n_commit_hash"
+        echo "N8N_COMMIT_HASH=$n8n_commit_hash" >> $GITHUB_ENV
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v2
-        with:
-          version: latest
-          dest: ~/setup-pnpm
+    - name: Copy bypass script to n8n repository
+      run: |
+        if [ -f "bypass.sh" ]; then
+          cp bypass.sh n8n-source/
+          echo "bypass.sh copied to n8n-source directory"
+        else
+          echo "bypass.sh not found in current repository"
+        fi
 
-      - name: Compute pnpm store path
-        run: echo "STORE_PATH=$(pnpm store path --silent)" >> "$GITHUB_ENV"
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '22'
 
-      - name: Restore pnpm store cache
-        uses: actions/cache@v3
-        with:
-          path: ${{ env.STORE_PATH }}
-          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-pnpm-store-
+    - name: Install pnpm
+      uses: pnpm/action-setup@v2
+      with:
+        version: latest
 
-      - name: Install dependencies
-        working-directory: n8n-source
-        run: pnpm install --frozen-lockfile
+    - name: Get pnpm store directory
+      shell: bash
+      run: |
+        echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
 
-      - name: Build n8n monorepo
-        working-directory: n8n-source
-        run: pnpm run build
+    - name: Setup pnpm cache
+      uses: actions/cache@v3
+      with:
+        path: ${{ env.STORE_PATH }}
+        key: ${{ runner.os }}-pnpm-store-${{ hashFiles('n8n-source/pnpm-lock.yaml') }}
+        restore-keys: |
+          ${{ runner.os }}-pnpm-store-
 
-      - name: Setup Docker Buildx
-        uses: docker/setup-buildx-action@v3
+    - name: Install dependencies
+      run: |
+        cd n8n-source
+        pnpm install --frozen-lockfile
 
-      - name: Login to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+    - name: Run bypass script
+      run: |
+        cd n8n-source
+        if [ -f "bypass.sh" ]; then
+          chmod +x bypass.sh
+          ./bypass.sh --auto
+          echo "bypass.sh executed successfully with --auto mode"
+        else
+          echo "bypass.sh not found in n8n repository, skipping..."
+        fi
 
-      - name: Build and push image
-        working-directory: n8n-source
-        run: |
-          set -euo pipefail
-          FULL_TAG="${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}"
-          FULL_LATEST="${REGISTRY}/${IMAGE_NAME}:latest"
-          docker buildx build \
-            --platform=linux/amd64 \
-            -t "$FULL_TAG" \
-            -t "$FULL_LATEST" \
-            --push \
-            -f docker/images/n8n/Dockerfile .
+    - name: Build n8n
+      run: |
+        cd n8n-source
+        pnpm run build
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=raw,value=${{ env.IMAGE_TAG }}
+          type=raw,value=latest,enable={{is_default_branch}}
+          type=sha,prefix={{branch}}-
+
+    - name: Build Docker image
+      run: |
+        cd n8n-source
+        pnpm run build:docker
+
+    - name: Tag and push Docker image
+      run: |
+        cd n8n-source
+        # Get the image ID from the build
+        IMAGE_ID=$(docker images --format "table {{.Repository}}:{{.Tag}}\t{{.ID}}" | grep "n8n:" | head -1 | awk '{print $2}')
+        
+        if [ -z "$IMAGE_ID" ]; then
+          echo "Error: Could not find built n8n Docker image"
+          docker images
+          exit 1
+        fi
+        
+        echo "Found Docker image with ID: $IMAGE_ID"
+        echo "N8N commit hash: ${{ env.N8N_COMMIT_HASH }}"
+        
+        # Tag the image for GHCR
+        docker tag $IMAGE_ID ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+        docker tag $IMAGE_ID ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+        docker tag $IMAGE_ID ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+        docker tag $IMAGE_ID ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:n8n-${{ env.N8N_COMMIT_HASH }}
+        
+        # Push all tags
+        docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+        docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+        docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+        docker push ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:n8n-${{ env.N8N_COMMIT_HASH }}
+        
+        echo "Successfully pushed Docker image to GHCR"
+
+    - name: Clean up
+      if: always()
+      run: |
+        docker system prune -f
