@@ -7,6 +7,7 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAME: chosomeister/n8n
   IMAGE_TAG: enterprise
+  NODE_OPTIONS: '--max-old-space-size=7168'
 
 jobs:
   build-and-push:
@@ -54,45 +55,25 @@ jobs:
     - name: Read version requirements from n8n package.json
       run: |
         cd n8n-source
-        
-        NODE_VERSION="22"
-        if [ -f "package.json" ]; then
-          NODE_VERSION=$(node -e "
-            try {
-              const pkg = require('./package.json');
-              const nodeEngine = pkg.engines && pkg.engines.node;
-              if (nodeEngine) {
-                const match = nodeEngine.match(/(\d+)/);
-                console.log(match ? match[1] : '22');
-              } else {
-                console.log('22');
-              }
-            } catch (e) {
-              console.log('22');
-            }
-          ")
+
+        if ! command -v jq >/dev/null 2>&1; then
+          echo "::error::jq is required to read package.json"
+          exit 1
         fi
-        
-        PNPM_VERSION="10.16.1"
-        if [ -f "package.json" ]; then
-          PNPM_VERSION=$(node -e "
-            try {
-              const pkg = require('./package.json');
-              const packageManager = pkg.packageManager;
-              if (packageManager && packageManager.includes('pnpm@')) {
-                console.log(packageManager.split('@')[1]);
-              } else if (pkg.engines && pkg.engines.pnpm) {
-                const match = pkg.engines.pnpm.match(/(\d+\.\d+\.\d+)/);
-                console.log(match ? match[1] : '10.16.1');
-              } else {
-                console.log('10.16.1');
-              }
-            } catch (e) {
-              console.log('10.16.1');
-            }
-          ")
+
+        NODE_VERSION=$(jq -r '.engines.node // "22"' package.json | sed -E 's/[^0-9.]+//g')
+        if [ -z "$NODE_VERSION" ]; then
+          NODE_VERSION="22"
         fi
-        
+
+        PNPM_VERSION=$(jq -r '.packageManager // empty' package.json | sed -n 's/.*pnpm@\([0-9.]*\).*/\1/p')
+        if [ -z "$PNPM_VERSION" ]; then
+          PNPM_VERSION=$(jq -r '.engines.pnpm // ""' package.json | sed -n 's/.*\([0-9]\+\.[0-9]\+\.[0-9]\+\).*/\1/p')
+        fi
+        if [ -z "$PNPM_VERSION" ]; then
+          PNPM_VERSION="10.16.1"
+        fi
+
         echo "NODE_VERSION=$NODE_VERSION" >> $GITHUB_ENV
         echo "PNPM_VERSION=$PNPM_VERSION" >> $GITHUB_ENV
 
@@ -128,6 +109,12 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-pnpm-store-
 
+    - name: Install dependencies (pnpm install --frozen-lockfile)
+      run: |
+        cd n8n-source
+        pnpm install --frozen-lockfile
+      timeout-minutes: 30
+
     - name: Free up disk space
       run: |
         sudo rm -rf /usr/local/lib/android
@@ -136,12 +123,6 @@ jobs:
         sudo rm -rf /usr/local/share/boost
         sudo apt-get clean
         docker system prune -af
-
-    - name: Install dependencies
-      run: |
-        cd n8n-source
-        pnpm install --frozen-lockfile --prefer-offline
-      timeout-minutes: 30
 
     - name: Run bypass script
       run: |
@@ -158,119 +139,31 @@ jobs:
           echo "::warning::bypass.sh not found in n8n repository, skipping..."
         fi
 
-    - name: Build n8n with memory optimization
+    - name: Build n8n artifacts (matches upstream workflow)
       run: |
         cd n8n-source
-        export NODE_OPTIONS="--max_old_space_size=7168"
+
         export NODE_ENV=production
-        
-        echo "Starting n8n build process..."
+
+        echo "Starting official n8n build (pnpm build:n8n)..."
         echo "Using Node.js version: $(node --version)"
         echo "Using pnpm version: $(pnpm --version)"
-        echo "Available memory:"
-        free -h
-        
-        # Build with retry logic
-        for i in {1..2}; do
-          if pnpm run build; then
-            echo "Build completed successfully"
+
+        for attempt in 1 2; do
+          if pnpm build:n8n; then
+            echo "n8n build completed successfully"
             break
-          else
-            echo "::warning::Build attempt $i failed, retrying..."
-            if [ $i -eq 2 ]; then
-              echo "::error::Build failed after 2 attempts"
-              exit 1
-            fi
-            sleep 30
           fi
+
+          if [ "$attempt" -eq 2 ]; then
+            echo "::error::pnpm build:n8n failed after 2 attempts"
+            exit 1
+          fi
+
+          echo "::warning::pnpm build:n8n failed on attempt $attempt, retrying..."
+          sleep 30
         done
-      timeout-minutes: 60
-
-    - name: Create complete production bundle
-      run: |
-        cd n8n-source
-        echo "Creating complete production bundle with all dependencies..."
-        
-        # Create production directory
-        mkdir -p n8n-bundle
-        
-        # Copy the ENTIRE built project INCLUDING node_modules without recursing into the bundle itself
-        tar -cf - --exclude='./n8n-bundle' . | (cd n8n-bundle && tar -xf -)
-        
-        # Clean up development files we don't need in production
-        rm -rf n8n-bundle/.git
-        rm -rf n8n-bundle/cypress
-        rm -rf n8n-bundle/scripts
-        rm -rf n8n-bundle/patches
-        
-        # Create a simple package.json for runtime
-        cat > n8n-bundle/package.json << 'EOF'
-        {
-          "name": "n8n-enterprise",
-          "version": "${{ env.N8N_VERSION }}",
-          "description": "n8n Enterprise Docker Build",
-          "main": "./packages/cli/dist/index.js",
-          "bin": {
-            "n8n": "./packages/cli/bin/n8n"
-          },
-          "scripts": {
-            "start": "node packages/cli/dist/index.js"
-          }
-        }
-        EOF
-        
-        echo "Complete bundle created with full node_modules"
-        ls -la n8n-bundle/
-
-    - name: Create working Dockerfile
-      run: |
-        cd n8n-source
-        cat > Dockerfile << 'EOF'
-        FROM node:22-alpine
-        
-        # Install system dependencies
-        RUN apk add --no-cache \
-          tini \
-          su-exec \
-          python3 \
-          make \
-          g++ \
-          cairo-dev \
-          pango-dev \
-          jpeg-dev \
-          giflib-dev \
-          git
-        
-        # Create app directory
-        WORKDIR /usr/src/app
-        
-        # Copy the COMPLETE built n8n bundle with all dependencies
-        COPY n8n-bundle/ ./
-        
-        # Fix permissions and create symlink
-        RUN chown -R node:node /usr/src/app && \
-          chmod +x packages/cli/bin/n8n && \
-          ln -s /usr/src/app/packages/cli/bin/n8n /usr/local/bin/n8n
-        
-        # Create n8n data directory
-        RUN mkdir -p /home/node/.n8n && \
-          chown -R node:node /home/node
-        
-        # Set environment
-        ENV N8N_USER_FOLDER=/home/node/.n8n
-        ENV NODE_ENV=production
-        ENV NODE_OPTIONS="--max-old-space-size=2048"
-        
-        EXPOSE 5678
-        
-        USER node
-        WORKDIR /home/node
-        
-        ENTRYPOINT ["tini", "--"]
-        CMD ["n8n"]
-        EOF
-        
-        echo "Working Dockerfile created with complete bundle"
+      timeout-minutes: 90
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
@@ -289,7 +182,10 @@ jobs:
         
         docker build \
           --progress=plain \
-          --build-arg NODE_ENV=production \
+          --build-arg NODE_VERSION=${{ env.NODE_VERSION }} \
+          --build-arg N8N_VERSION=${{ env.N8N_VERSION }} \
+          --build-arg N8N_RELEASE_TYPE=stable \
+          -f docker/images/n8n/Dockerfile \
           -t n8n:latest \
           .
         
