@@ -25,7 +25,7 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Clone upstream n8n (latest stable tag)
+      - name: Clone upstream n8n latest stable
         run: |
           set -euo pipefail
           git clone https://github.com/n8n-io/n8n.git n8n-source
@@ -38,7 +38,7 @@ jobs:
           echo "N8N_COMMIT_HASH=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
           echo "Checked out tag: ${latest_stable_tag:-"(left at default branch)"}"
 
-      - name: Apply license bypass (if provided)
+      - name: Apply license bypass
         run: |
           set -euo pipefail
           if [ -f "bypass.sh" ]; then
@@ -92,38 +92,19 @@ jobs:
       - name: Login to GHCR
         uses: docker/login-action@v3
         with:
-          registry: ${{ env.REGISTRY }}
+          registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Build AND push in one atomic step (no local load)
-      - name: Buildx: build and push to registry (multi-tag)
+      - name: Build and push image
         working-directory: n8n-source
-        env:
-          REGISTRY: ${{ env.REGISTRY }}
-          IMAGE_NAME: ${{ env.IMAGE_NAME }}
-          IMAGE_TAG: ${{ env.IMAGE_TAG }}
         run: |
           set -euo pipefail
           FULL_TAG="${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}"
           FULL_LATEST="${REGISTRY}/${IMAGE_NAME}:latest"
-
           docker buildx build \
             --platform=linux/amd64 \
             -t "$FULL_TAG" \
             -t "$FULL_LATEST" \
             --push \
             -f docker/images/n8n/Dockerfile .
-
-      # Optional best-effort verification (does not fail the job)
-      - name: Verify GHCR image (best-effort)
-        if: always()
-        run: |
-          set -euo pipefail
-          FULL_TAG="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}"
-          echo "Checking image manifest for $FULL_TAG"
-          if docker manifest inspect "$FULL_TAG" > /dev/null 2>&1; then
-            echo "Image $FULL_TAG found (manifest present)"
-          else
-            echo "Warning: docker manifest inspect failed to find $FULL_TAG"
-          fi
