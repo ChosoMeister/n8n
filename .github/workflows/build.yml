@@ -52,44 +52,54 @@ jobs:
         echo "N8N_VERSION=$n8n_version" >> $GITHUB_ENV
 
     - name: Read version requirements from n8n package.json
-      id: version-requirements
       run: |
         cd n8n-source
         
-        # Read Node.js version requirement
-        node_version=$(node -p "
-          const pkg = require('./package.json');
-          const nodeEngine = pkg.engines?.node;
-          if (nodeEngine) {
-            // Extract version number from patterns like '>=22.16', '>=22.16.0', '^22.16'
-            const match = nodeEngine.match(/(\d+\.\d+(?:\.\d+)?)/);
-            console.log(match ? match[1] : '22');
-          } else {
-            console.log('22');
-          }
-        " 2>/dev/null || echo "22")
+        # Read Node.js version requirement - simplified approach
+        NODE_VERSION="22"
+        if [ -f "package.json" ]; then
+          NODE_VERSION=$(node -e "
+            try {
+              const pkg = require('./package.json');
+              const nodeEngine = pkg.engines && pkg.engines.node;
+              if (nodeEngine) {
+                const match = nodeEngine.match(/(\d+)/);
+                console.log(match ? match[1] : '22');
+              } else {
+                console.log('22');
+              }
+            } catch (e) {
+              console.log('22');
+            }
+          ")
+        fi
         
-        # Read pnpm version requirement
-        pnpm_version=$(node -p "
-          const pkg = require('./package.json');
-          // First try packageManager field
-          const packageManager = pkg.packageManager;
-          if (packageManager && packageManager.includes('pnpm@')) {
-            console.log(packageManager.split('@')[1]);
-          } else if (pkg.engines?.pnpm) {
-            // Extract version from engines.pnpm like '>=10.16.1'
-            const match = pkg.engines.pnpm.match(/(\d+\.\d+\.\d+)/);
-            console.log(match ? match[1] : '10.16.1');
-          } else {
-            console.log('10.16.1');
-          }
-        " 2>/dev/null || echo "10.16.1")
+        # Read pnpm version requirement - simplified approach
+        PNPM_VERSION="10.16.1"
+        if [ -f "package.json" ]; then
+          PNPM_VERSION=$(node -e "
+            try {
+              const pkg = require('./package.json');
+              const packageManager = pkg.packageManager;
+              if (packageManager && packageManager.includes('pnpm@')) {
+                console.log(packageManager.split('@')[1]);
+              } else if (pkg.engines && pkg.engines.pnpm) {
+                const match = pkg.engines.pnpm.match(/(\d+\.\d+\.\d+)/);
+                console.log(match ? match[1] : '10.16.1');
+              } else {
+                console.log('10.16.1');
+              }
+            } catch (e) {
+              console.log('10.16.1');
+            }
+          ")
+        fi
         
-        echo "Detected Node.js version requirement: $node_version"
-        echo "Detected pnpm version requirement: $pnpm_version"
+        echo "Detected Node.js version requirement: $NODE_VERSION"
+        echo "Detected pnpm version requirement: $PNPM_VERSION"
         
-        echo "NODE_VERSION=$node_version" >> $GITHUB_ENV
-        echo "PNPM_VERSION=$pnpm_version" >> $GITHUB_ENV
+        echo "NODE_VERSION=$NODE_VERSION" >> $GITHUB_ENV
+        echo "PNPM_VERSION=$PNMP_VERSION" >> $GITHUB_ENV
 
     - name: Copy bypass script to n8n repository
       run: |
