@@ -51,6 +51,46 @@ jobs:
         echo "N8N_COMMIT_HASH=$n8n_commit_hash" >> $GITHUB_ENV
         echo "N8N_VERSION=$n8n_version" >> $GITHUB_ENV
 
+    - name: Read version requirements from n8n package.json
+      id: version-requirements
+      run: |
+        cd n8n-source
+        
+        # Read Node.js version requirement
+        node_version=$(node -p "
+          const pkg = require('./package.json');
+          const nodeEngine = pkg.engines?.node;
+          if (nodeEngine) {
+            // Extract version number from patterns like '>=22.16', '>=22.16.0', '^22.16'
+            const match = nodeEngine.match(/(\d+\.\d+(?:\.\d+)?)/);
+            console.log(match ? match[1] : '22');
+          } else {
+            console.log('22');
+          }
+        " 2>/dev/null || echo "22")
+        
+        # Read pnpm version requirement
+        pnpm_version=$(node -p "
+          const pkg = require('./package.json');
+          // First try packageManager field
+          const packageManager = pkg.packageManager;
+          if (packageManager && packageManager.includes('pnpm@')) {
+            console.log(packageManager.split('@')[1]);
+          } else if (pkg.engines?.pnpm) {
+            // Extract version from engines.pnpm like '>=10.16.1'
+            const match = pkg.engines.pnpm.match(/(\d+\.\d+\.\d+)/);
+            console.log(match ? match[1] : '10.16.1');
+          } else {
+            console.log('10.16.1');
+          }
+        " 2>/dev/null || echo "10.16.1")
+        
+        echo "Detected Node.js version requirement: $node_version"
+        echo "Detected pnpm version requirement: $pnpm_version"
+        
+        echo "NODE_VERSION=$node_version" >> $GITHUB_ENV
+        echo "PNPM_VERSION=$pnpm_version" >> $GITHUB_ENV
+
     - name: Copy bypass script to n8n repository
       run: |
         if [ -f "bypass.sh" ]; then
@@ -60,16 +100,15 @@ jobs:
           echo "::warning::bypass.sh not found in current repository"
         fi
 
-    - name: Setup Node.js
+    - name: Setup Node.js with detected version
       uses: actions/setup-node@v4
       with:
-        node-version: '20'
-        # کاملاً حذف شده - بدون cache
+        node-version: ${{ env.NODE_VERSION }}
 
-    - name: Install pnpm
+    - name: Install pnpm with detected version
       uses: pnpm/action-setup@v4
       with:
-        version: '9.12.0'
+        version: ${{ env.PNPM_VERSION }}
 
     - name: Get pnpm store directory
       shell: bash
@@ -121,10 +160,12 @@ jobs:
         export NODE_ENV=production
         
         echo "Starting n8n build process..."
+        echo "Using Node.js version: $(node --version)"
+        echo "Using pnpm version: $(pnpm --version)"
         echo "Available memory:"
         free -h
         
-        # Build با retry logic
+        # Build with retry logic
         for i in {1..2}; do
           if pnpm run build; then
             echo "Build completed successfully"
@@ -224,6 +265,8 @@ jobs:
         echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
         echo "| n8n Version | \`${{ env.N8N_VERSION }}\` |" >> $GITHUB_STEP_SUMMARY
         echo "| n8n Commit | \`${{ env.N8N_COMMIT_HASH }}\` |" >> $GITHUB_STEP_SUMMARY
+        echo "| Node.js Version | \`${{ env.NODE_VERSION }}\` |" >> $GITHUB_STEP_SUMMARY
+        echo "| pnpm Version | \`${{ env.PNPM_VERSION }}\` |" >> $GITHUB_STEP_SUMMARY
         echo "| Registry | \`${{ env.REGISTRY }}\` |" >> $GITHUB_STEP_SUMMARY
         echo "| Image | \`${{ env.IMAGE_NAME }}\` |" >> $GITHUB_STEP_SUMMARY
         
