@@ -61,9 +61,15 @@ jobs:
           exit 1
         fi
 
-        NODE_VERSION=$(jq -r '.engines.node // "22"' package.json | sed -E 's/[^0-9.]+//g')
-        if [ -z "$NODE_VERSION" ]; then
-          NODE_VERSION="22"
+        NODE_VERSION_RAW=$(jq -r '.engines.node // "22"' package.json)
+        NODE_VERSION_CLEAN=$(echo "$NODE_VERSION_RAW" | sed -E 's/[^0-9.]+//g')
+        if [ -z "$NODE_VERSION_CLEAN" ]; then
+          NODE_VERSION_CLEAN="22"
+        fi
+
+        NODE_VERSION_MAJOR=$(echo "$NODE_VERSION_CLEAN" | cut -d'.' -f1)
+        if [ -z "$NODE_VERSION_MAJOR" ]; then
+          NODE_VERSION_MAJOR="$NODE_VERSION_CLEAN"
         fi
 
         PNPM_VERSION=$(jq -r '.packageManager // empty' package.json | sed -n 's/.*pnpm@\([0-9.]*\).*/\1/p')
@@ -74,7 +80,9 @@ jobs:
           PNPM_VERSION="10.16.1"
         fi
 
-        echo "NODE_VERSION=$NODE_VERSION" >> $GITHUB_ENV
+        echo "Detected Node.js requirement: $NODE_VERSION_RAW (clean: $NODE_VERSION_CLEAN, major: $NODE_VERSION_MAJOR)"
+        echo "NODE_VERSION=$NODE_VERSION_MAJOR" >> $GITHUB_ENV
+        echo "NODE_VERSION_FULL=$NODE_VERSION_CLEAN" >> $GITHUB_ENV
         echo "PNPM_VERSION=$PNPM_VERSION" >> $GITHUB_ENV
 
     - name: Copy bypass script to n8n repository
@@ -89,7 +97,7 @@ jobs:
     - name: Setup Node.js with detected version
       uses: actions/setup-node@v4
       with:
-        node-version: ${{ env.NODE_VERSION }}
+        node-version: ${{ env.NODE_VERSION_FULL }}
 
     - name: Install pnpm with detected version
       uses: pnpm/action-setup@v4
