@@ -64,7 +64,7 @@ jobs:
       uses: actions/setup-node@v4
       with:
         node-version: '20'
-        cache: 'npm'
+        # کاملاً حذف شده - بدون cache
 
     - name: Install pnpm
       uses: pnpm/action-setup@v4
@@ -124,10 +124,20 @@ jobs:
         echo "Available memory:"
         free -h
         
-        # Build with optimized settings
-        pnpm run build --max_old_space_size=7168
-        
-        echo "Build completed successfully"
+        # Build با retry logic
+        for i in {1..2}; do
+          if pnpm run build; then
+            echo "Build completed successfully"
+            break
+          else
+            echo "::warning::Build attempt $i failed, retrying..."
+            if [ $i -eq 2 ]; then
+              echo "::error::Build failed after 2 attempts"
+              exit 1
+            fi
+            sleep 30
+          fi
+        done
       timeout-minutes: 60
 
     - name: Set up Docker Buildx
