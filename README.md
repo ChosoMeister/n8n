@@ -1,10 +1,10 @@
-# n8n Enterprise Docker Build
+# 📚 n8n Enterprise Architecture Study
 
 > **🌐 [English](#english) | [فارسی](#persian)**
 
 ---
 
-## ⚠️ Important Disclaimer / اطلاعیه مهم
+## 🎓 Educational Purpose Statement / بیانیه هدف آموزشی
 
 <table>
 <tr>
@@ -12,26 +12,105 @@
 
 ### 🇬🇧 English
 
-**For Educational and Research Purposes Only**
+> [!CAUTION]
+> **STRICTLY FOR EDUCATIONAL AND ACADEMIC RESEARCH PURPOSES ONLY**
 
-- Commercial use or production deployment is **strictly prohibited**
-- Please comply with local laws and software license agreements
-- All responsibilities and risks are borne by the user
+This repository is an **academic research project** created to study and understand the architecture, feature flagging mechanisms, and enterprise software design patterns used in modern workflow automation platforms.
+
+**⚠️ This project is:**
+- ✅ For learning software architecture concepts
+- ✅ For studying feature flag implementation patterns
+- ✅ For academic research on enterprise software design
+- ✅ For personal skill development in DevOps and CI/CD
+
+**❌ This project is NOT:**
+- ❌ For commercial use of any kind
+- ❌ For production deployment
+- ❌ A replacement for purchasing legitimate licenses
+- ❌ Endorsed or supported by n8n GmbH
+
+**Legal Notice:**
+- Users must comply with all applicable laws and regulations
+- Users must respect the original [n8n License](https://github.com/n8n-io/n8n/blob/master/LICENSE.md)
+- All responsibilities and legal risks are borne solely by the user
+- **We strongly encourage supporting the original developers** by purchasing legitimate licenses at [n8n.io](https://n8n.io)
 
 </td>
 <td width="50%">
 
 ### 🇮🇷 فارسی
 
-**فقط برای اهداف آموزشی و پژوهشی**
+> [!CAUTION]
+> **صرفاً برای اهداف آموزشی و پژوهش دانشگاهی**
 
-- استفاده تجاری یا استقرار در محیط تولیدی **اکیداً ممنوع** است
-- لطفاً به قوانین محلی و توافقنامه لایسنس نرم‌افزارها پایبند باشید
-- تمامی مسئولیت‌ها و ریسک‌ها بر عهده کاربر است
+این ریپازیتوری یک **پروژه تحقیقاتی آکادمیک** است که برای مطالعه و درک معماری، مکانیزم‌های feature flagging و الگوهای طراحی نرم‌افزار سازمانی در پلتفرم‌های اتوماسیون workflow مدرن ایجاد شده است.
+
+**⚠️ این پروژه:**
+- ✅ برای یادگیری مفاهیم معماری نرم‌افزار
+- ✅ برای مطالعه الگوهای پیاده‌سازی feature flag
+- ✅ برای تحقیق آکادمیک در طراحی نرم‌افزار سازمانی
+- ✅ برای توسعه مهارت‌های شخصی در DevOps و CI/CD
+
+**❌ این پروژه نیست:**
+- ❌ برای استفاده تجاری از هر نوع
+- ❌ برای استقرار در محیط تولیدی
+- ❌ جایگزینی برای خرید لایسنس قانونی
+- ❌ مورد تأیید یا پشتیبانی n8n GmbH
+
+**اطلاعیه قانونی:**
+- کاربران باید از قوانین و مقررات مربوطه پیروی کنند
+- کاربران باید به [لایسنس اصلی n8n](https://github.com/n8n-io/n8n/blob/master/LICENSE.md) احترام بگذارند
+- تمامی مسئولیت‌ها و ریسک‌های قانونی بر عهده کاربر است
+- **ما اکیداً توصیه می‌کنیم از توسعه‌دهندگان اصلی حمایت کنید** با خرید لایسنس قانونی از [n8n.io](https://n8n.io)
 
 </td>
 </tr>
 </table>
+
+---
+
+## 💡 Why This Project Exists / چرا این پروژه وجود دارد
+
+<table>
+<tr>
+<td width="50%">
+
+This project was created as part of an academic study to understand:
+
+1. **Software Architecture**: How modern workflow automation platforms are designed
+2. **Feature Flagging**: How enterprise features are gated and managed
+3. **Docker & CI/CD**: Building automated container image pipelines
+4. **Open Source Contribution**: Understanding codebase structure for future contributions
+
+**This is NOT a "crack" or bypass tool.** It is a study of publicly available open-source code to understand software engineering practices.
+
+</td>
+<td width="50%">
+
+این پروژه به عنوان بخشی از یک مطالعه آکادمیک برای درک موارد زیر ایجاد شده است:
+
+1. **معماری نرم‌افزار**: طراحی پلتفرم‌های اتوماسیون workflow مدرن
+2. **Feature Flagging**: نحوه مدیریت و محدودسازی ویژگی‌های سازمانی
+3. **Docker و CI/CD**: ساخت خطوط لوله خودکار container image
+4. **مشارکت در متن‌باز**: درک ساختار کد برای مشارکت‌های آینده
+
+**این یک ابزار "کرک" یا دور زدن نیست.** این یک مطالعه بر روی کد متن‌باز عمومی برای درک روش‌های مهندسی نرم‌افزار است.
+
+</td>
+</tr>
+</table>
+
+---
+
+## 🙏 Attribution & Credits
+
+This project is based on [n8n](https://github.com/n8n-io/n8n), an amazing workflow automation tool created by [n8n GmbH](https://n8n.io).
+
+- **Original Repository**: https://github.com/n8n-io/n8n
+- **Official Website**: https://n8n.io
+- **Support the Developers**: [Purchase a License](https://n8n.io/pricing)
+
+We have immense respect for the n8n team and their incredible work. If you find n8n useful, **please consider purchasing a license to support ongoing development**.
 
 ---
 
@@ -40,7 +119,7 @@
 
 ## Overview
 
-This repository contains a GitHub Actions workflow that automatically builds n8n Docker images with Enterprise features enabled and pushes them to GitHub Container Registry (GHCR).
+This repository contains a GitHub Actions workflow created for **educational purposes** to study how Docker images are built and how feature flags work in enterprise software. The workflow demonstrates modern CI/CD practices using GitHub Actions and Container Registry.
 
 ## Features
 
@@ -237,12 +316,32 @@ docker run -d \
 
 ---
 
-## License
+## 📜 License & Legal
 
-This project is for educational purposes only. Please respect software licenses and local laws.
+### Original n8n License
+
+n8n is licensed under the [Sustainable Use License](https://github.com/n8n-io/n8n/blob/master/LICENSE.md). This educational project **does not grant any additional rights** beyond what is provided by the original license.
+
+### Educational Use Disclaimer
+
+> [!WARNING]
+> This repository is provided "AS IS" for **educational and research purposes only**.
+> 
+> - No warranties or guarantees of any kind
+> - Not intended for commercial or production use
+> - Users are solely responsible for compliance with applicable laws
+> - This project does not circumvent any licensing; it studies publicly available code
+
+### Support the Original Developers
+
+If you use n8n in any capacity, please consider:
+- ⭐ **Starring** the [original n8n repository](https://github.com/n8n-io/n8n)
+- 💰 **Purchasing a license** at [n8n.io/pricing](https://n8n.io/pricing)  
+- 🤝 **Contributing** to the open-source project
 
 ---
 
 <p align="center">
-  <b>Made with ❤️ for learning purposes</b>
+  <b>📚 Made for Learning & Academic Research 📚</b><br>
+  <sub>Please respect software licenses and support open-source developers</sub>
 </p>
