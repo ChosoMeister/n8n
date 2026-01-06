@@ -171,14 +171,13 @@ log_success "Applied license bypass to $LICENSE_FILE"
 
 log_info "Modifying $LICENSE_STATE_FILE..."
 
-# Replace isLicensed method with smart logic (same as license.ts)
-safe_sed "s/isLicensed(feature: BooleanLicenseFeature/isLicensed(feature: BooleanLicenseFeature) { if (typeof feature === 'string' \&\& (feature === 'feat:showNonProdBanner' || feature === 'feat:apiDisabled')) return false; return true; } _isLicensedOriginal(feature: BooleanLicenseFeature/g" "$LICENSE_STATE_FILE" "LicenseState.isLicensed smart logic"
+# For license-state.ts, we use a simpler approach:
+# Replace the body of isLicensed to always return true
+# The function handles both string and array types, so we replace the return false at the end
+safe_sed "s/return false;$/return true;/g" "$LICENSE_STATE_FILE" "LicenseState return false to true"
 
-# Replace isAPIDisabled to return false
-safe_sed '/isAPIDisabled() {/,/}/ {
-    s/return this\.isLicensed(.*feat:apiDisabled.*);/return false;/
-    s/return true;/return false;/
-}' "$LICENSE_STATE_FILE" "LicenseState.isAPIDisabled"
+# Also ensure isAPIDisabled returns false (API should be enabled)
+safe_sed "s/return this\.isLicensed('feat:apiDisabled');/return false;/g" "$LICENSE_STATE_FILE" "LicenseState.isAPIDisabled"
 
 # Replace quota methods with unlimited/high values
 safe_sed 's/return this\.getValue('\''quota:users'\'') ?? UNLIMITED_LICENSE_QUOTA;/return UNLIMITED_LICENSE_QUOTA;/' "$LICENSE_STATE_FILE" "quota:users"
