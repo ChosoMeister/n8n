@@ -14,7 +14,6 @@
 
 **For Educational and Research Purposes Only**
 
-- Technical solution based on [oskr.cn](https://oskr.cn)
 - Commercial use or production deployment is **strictly prohibited**
 - Please comply with local laws and software license agreements
 - All responsibilities and risks are borne by the user
@@ -26,7 +25,6 @@
 
 **فقط برای اهداف آموزشی و پژوهشی**
 
-- راهکار فنی برگرفته از [oskr.cn](https://oskr.cn)
 - استفاده تجاری یا استقرار در محیط تولیدی **اکیداً ممنوع** است
 - لطفاً به قوانین محلی و توافقنامه لایسنس نرم‌افزارها پایبند باشید
 - تمامی مسئولیت‌ها و ریسک‌ها بر عهده کاربر است
