@@ -18,6 +18,12 @@ if [[ "$1" == "--auto" || "$CI" == "true" || -n "$GITHUB_ACTIONS" ]]; then
     AUTO_MODE=true
 fi
 
+# File paths
+LICENSE_FILE="packages/cli/src/license.ts"
+LICENSE_STATE_FILE="packages/@n8n/backend-common/src/license-state.ts"
+FRONTEND_SERVICE_FILE="packages/cli/src/services/frontend.service.ts"
+DOCKER_FILE="docker/images/n8n/Dockerfile"
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -28,11 +34,6 @@ NC='\033[0m' # No Color
 # Track errors
 ERRORS=()
 WARNINGS=()
-
-# File paths
-LICENSE_FILE="packages/cli/src/license.ts"
-LICENSE_STATE_FILE="packages/@n8n/backend-common/src/license-state.ts"
-DOCKER_FILE="docker/images/n8n/Dockerfile"
 
 # ============================================
 # Helper Functions
@@ -192,6 +193,46 @@ safe_sed 's/return this\.getValue('\''quota:maxTeamProjects'\'') ?? 0;/return 99
 safe_sed 's/return this\.getValue('\''quota:evaluations:maxWorkflows'\'') ?? 0;/return 99999;/' "$LICENSE_STATE_FILE" "quota:evaluations:maxWorkflows"
 
 log_success "Applied license bypass to $LICENSE_STATE_FILE"
+
+# ============================================
+# Apply changes to frontend.service.ts
+# ============================================
+
+if [[ -f "$FRONTEND_SERVICE_FILE" ]]; then
+    log_info "Modifying $FRONTEND_SERVICE_FILE..."
+    
+    # Create backup
+    cp "$FRONTEND_SERVICE_FILE" "${FRONTEND_SERVICE_FILE}.backup"
+    
+    # Force mfaEnforcement to true (enables "Enforce two-factor authentication" feature)
+    safe_sed 's/mfaEnforcement: this\.licenseState\.isMFAEnforcementLicensed()/mfaEnforcement: true/g' "$FRONTEND_SERVICE_FILE" "mfaEnforcement"
+    
+    # Force customRoles to true (enables "Project roles" feature)
+    safe_sed 's/customRoles: this\.licenseState\.isCustomRolesLicensed()/customRoles: true/g' "$FRONTEND_SERVICE_FILE" "customRoles"
+    
+    # Force all other enterprise features to true in getSettings()
+    safe_sed 's/sharing: this\.license\.isSharingEnabled()/sharing: true/g' "$FRONTEND_SERVICE_FILE" "sharing"
+    safe_sed 's/logStreaming: this\.license\.isLogStreamingEnabled()/logStreaming: true/g' "$FRONTEND_SERVICE_FILE" "logStreaming"
+    safe_sed 's/ldap: this\.license\.isLdapEnabled()/ldap: true/g' "$FRONTEND_SERVICE_FILE" "ldap"
+    safe_sed 's/saml: this\.license\.isSamlEnabled()/saml: true/g' "$FRONTEND_SERVICE_FILE" "saml"
+    safe_sed 's/oidc: this\.licenseState\.isOidcLicensed()/oidc: true/g' "$FRONTEND_SERVICE_FILE" "oidc"
+    safe_sed 's/advancedExecutionFilters: this\.license\.isAdvancedExecutionFiltersEnabled()/advancedExecutionFilters: true/g' "$FRONTEND_SERVICE_FILE" "advancedExecutionFilters"
+    safe_sed 's/variables: this\.license\.isVariablesEnabled()/variables: true/g' "$FRONTEND_SERVICE_FILE" "variables"
+    safe_sed 's/sourceControl: this\.license\.isSourceControlLicensed()/sourceControl: true/g' "$FRONTEND_SERVICE_FILE" "sourceControl"
+    safe_sed 's/externalSecrets: this\.license\.isExternalSecretsEnabled()/externalSecrets: true/g' "$FRONTEND_SERVICE_FILE" "externalSecrets"
+    safe_sed 's/debugInEditor: this\.license\.isDebugInEditorLicensed()/debugInEditor: true/g' "$FRONTEND_SERVICE_FILE" "debugInEditor"
+    safe_sed 's/workerView: this\.license\.isWorkerViewLicensed()/workerView: true/g' "$FRONTEND_SERVICE_FILE" "workerView"
+    safe_sed 's/advancedPermissions: this\.license\.isAdvancedPermissionsLicensed()/advancedPermissions: true/g' "$FRONTEND_SERVICE_FILE" "advancedPermissions"
+    safe_sed 's/apiKeyScopes: this\.license\.isApiKeyScopesEnabled()/apiKeyScopes: true/g' "$FRONTEND_SERVICE_FILE" "apiKeyScopes"
+    safe_sed 's/workflowDiffs: this\.licenseState\.isWorkflowDiffsLicensed()/workflowDiffs: true/g' "$FRONTEND_SERVICE_FILE" "workflowDiffs"
+    
+    # Ensure showNonProdBanner is false (hide the banner)
+    safe_sed 's/showNonProdBanner: this\.license\.isLicensed(LICENSE_FEATURES\.SHOW_NON_PROD_BANNER)/showNonProdBanner: false/g' "$FRONTEND_SERVICE_FILE" "showNonProdBanner"
+    
+    log_success "Applied license bypass to $FRONTEND_SERVICE_FILE"
+else
+    log_warning "Frontend service file not found at $FRONTEND_SERVICE_FILE"
+fi
 
 # ============================================
 # Update Dockerfile for stable release type
