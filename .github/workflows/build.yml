@@ -182,21 +182,23 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Build Docker image with complete bundle
+    - name: Build Docker image with caching
+      uses: docker/build-push-action@v5
+      with:
+        context: n8n-source
+        file: n8n-source/docker/images/n8n/Dockerfile
+        push: false
+        load: true
+        tags: n8n:latest
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        build-args: |
+          NODE_VERSION=${{ env.NODE_VERSION }}
+          N8N_VERSION=${{ env.N8N_VERSION }}
+          N8N_RELEASE_TYPE=stable
+
+    - name: Verify Docker image was built
       run: |
-        cd n8n-source
-        echo "Building Docker image with complete n8n bundle..."
-        
-        docker build \
-          --progress=plain \
-          --build-arg NODE_VERSION=${{ env.NODE_VERSION }} \
-          --build-arg N8N_VERSION=${{ env.N8N_VERSION }} \
-          --build-arg N8N_RELEASE_TYPE=stable \
-          -f docker/images/n8n/Dockerfile \
-          -t n8n:latest \
-          .
-        
-        # Verify image was built
         echo "Built Docker images:"
         docker images n8n:latest
         
@@ -206,8 +208,32 @@ jobs:
         fi
         
         echo "Docker image built successfully with tag: n8n:latest"
-      timeout-minutes: 45
 
+    - name: Health check Docker image
+      run: |
+        echo "Starting n8n container for health check..."
+        docker run -d --name n8n-health-test -p 5678:5678 \
+          -e N8N_DIAGNOSTICS_ENABLED=false \
+          -e N8N_SECURE_COOKIE=false \
+          n8n:latest
+        
+        echo "Waiting for n8n to start (max 60 seconds)..."
+        for i in {1..12}; do
+          if curl -sf http://localhost:5678/healthz > /dev/null 2>&1; then
+            echo "✅ Health check passed!"
+            docker stop n8n-health-test && docker rm n8n-health-test
+            exit 0
+          fi
+          echo "Attempt $i/12: Waiting 5 more seconds..."
+          sleep 5
+        done
+        
+        echo "::error::Health check failed after 60 seconds"
+        echo "Container logs:"
+        docker logs n8n-health-test
+        docker stop n8n-health-test && docker rm n8n-health-test
+        exit 1
+      timeout-minutes: 5
     - name: Tag and push Docker image
       run: |
         cd n8n-source
@@ -290,3 +316,14 @@ jobs:
         if [ -d "${{ env.STORE_PATH }}" ]; then
           du -sh "${{ env.STORE_PATH }}" || true
         fi
+
+    - name: Notify on failure
+      if: failure()
+      run: |
+        echo "## ❌ Build Failed!" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "The n8n Enterprise Docker image build has failed." >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Workflow Run:** [${{ github.run_id }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "Please check the logs for more details." >> $GITHUB_STEP_SUMMARY
