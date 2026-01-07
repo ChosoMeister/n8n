@@ -144,6 +144,11 @@ safe_sed 's/const LICENSE_RENEWAL_DISABLED_WARNING =.*/const LICENSE_RENEWAL_DIS
 # - Return true for all other features
 safe_sed "s/isLicensed(feature: BooleanLicenseFeature) {/isLicensed(feature: BooleanLicenseFeature) { if (feature === 'feat:showNonProdBanner' || feature === 'feat:apiDisabled') return false;/g" "$LICENSE_FILE" "isLicensed smart logic"
 
+# CRITICAL: Replace the actual return statement in isLicensed to return true
+# This is needed because the middleware in controller.registry.ts calls this.license.isLicensed(feature)
+# and relies on this return value for SSO, Projects, and other enterprise features
+safe_sed 's/return this\.manager?\.hasFeatureEnabled(feature) ?? false;/return true;/' "$LICENSE_FILE" "isLicensed return true"
+
 # Replace all license feature checks to return true
 safe_sed 's/return this\.isLicensed(LICENSE_FEATURES\.[^)]*);/return true;/g' "$LICENSE_FILE" "LICENSE_FEATURES checks"
 
